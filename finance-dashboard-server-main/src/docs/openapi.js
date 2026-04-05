@@ -60,7 +60,9 @@ export function createOpenApiSpec() {
       { name: "Auth", description: "Authentication and current user info" },
       { name: "Users", description: "User administration endpoints" },
       { name: "Records", description: "Financial record management endpoints" },
-      { name: "Dashboard", description: "Dashboard analytics endpoints" }
+      { name: "Dashboard", description: "Dashboard analytics endpoints" },
+      { name: "Posts", description: "Internal insights and market updates" },
+      { name: "Audit", description: "System audit logs (Admin only)" }
     ],
     components: {
       securitySchemes: {
@@ -88,6 +90,13 @@ export function createOpenApiSpec() {
           in: "path",
           required: true,
           description: "Financial record ID",
+          schema: { type: "string", format: "uuid" }
+        },
+        postId: {
+          name: "id",
+          in: "path",
+          required: true,
+          description: "Post ID",
           schema: { type: "string", format: "uuid" }
         }
       },
@@ -352,23 +361,114 @@ export function createOpenApiSpec() {
             totalExpenses: { type: "number", example: 2970 },
             netBalance: { type: "number", example: 5030 },
             recordCount: { type: "integer", example: 6 },
-            categoryTotals: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  category: { type: "string", example: "Services" },
-                  income: { type: "number", example: 3200 },
-                  expense: { type: "number", example: 450 },
-                  net: { type: "number", example: 2750 }
-                },
-                required: ["category", "income", "expense", "net"]
-              }
+          categoryTotals: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                category: { type: "string", example: "Services" },
+                income: { type: "number", example: 3200 },
+                expense: { type: "number", example: 450 },
+                net: { type: "number", example: 2750 }
+              },
+              required: ["category", "income", "expense", "net"]
             }
           },
-          required: ["totalIncome", "totalExpenses", "netBalance", "recordCount", "categoryTotals"]
+          topSpendingCategory: {
+            type: "object",
+            nullable: true,
+            properties: {
+              category: { type: "string", example: "Services" },
+              total: { type: "number", example: 1200 }
+            }
+          },
+          growthMetrics: {
+            type: "object",
+            nullable: true,
+            properties: {
+              period: { type: "string", example: "2026-03" },
+              income: { type: "number", example: 8000 },
+              expense: { type: "number", example: 2970 },
+              income_growth: { type: "number", example: 500 },
+              expense_growth: { type: "number", example: 200 },
+              income_growth_pct: { type: "number", example: 6.25 }
+            }
+          }
         },
-        DashboardSummaryResponse: {
+        required: ["totalIncome", "totalExpenses", "netBalance", "recordCount", "categoryTotals"]
+      },
+      Post: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          title: { type: "string", example: "Quarterly Market Outlook" },
+          content: { type: "string", example: "The market is showing strong signs..." },
+          category: { 
+            type: "string", 
+            enum: ["Market Update", "Internal Announcement", "Financial Insight"] 
+          },
+          author_id: { type: "string", format: "uuid" },
+          author_name: { type: "string", example: "Alice Analyst" },
+          created_at: { type: "string", format: "date-time" },
+          updated_at: { type: "string", format: "date-time" }
+        },
+        required: ["id", "title", "content", "category", "author_id", "created_at", "updated_at"]
+      },
+      PostRequest: {
+        type: "object",
+        properties: {
+          title: { type: "string", example: "Investment Insights" },
+          content: { type: "string", example: "Detailed analysis of..." },
+          category: { 
+            type: "string", 
+            enum: ["Market Update", "Internal Announcement", "Financial Insight"] 
+          }
+        },
+        required: ["title", "content", "category"]
+      },
+      PostResponse: {
+        type: "object",
+        properties: {
+          data: { $ref: "#/components/schemas/Post" }
+        },
+        required: ["data"]
+      },
+      PostListResponse: {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Post" }
+          }
+        },
+        required: ["data"]
+      },
+      AuditLog: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          user_id: { type: "string", format: "uuid" },
+          user_name: { type: "string", example: "Bob Admin" },
+          action: { type: "string", example: "CREATE_POST" },
+          entity_type: { type: "string", example: "POST" },
+          entity_id: { type: "string", format: "uuid" },
+          details: { type: "object" },
+          ip_address: { type: "string", example: "127.0.0.1" },
+          created_at: { type: "string", format: "date-time" }
+        },
+        required: ["id", "action", "entity_type", "created_at"]
+      },
+      AuditLogListResponse: {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AuditLog" }
+          }
+        },
+        required: ["data"]
+      },
+      DashboardSummaryResponse: {
           type: "object",
           properties: {
             data: { $ref: "#/components/schemas/DashboardSummary" }
@@ -890,6 +990,103 @@ export function createOpenApiSpec() {
                   schema: { $ref: "#/components/schemas/RecentActivityResponse" }
                 }
               }
+            },
+            401: { $ref: "#/components/responses/Unauthorized" },
+            403: { $ref: "#/components/responses/Forbidden" }
+          }
+        }
+      },
+      "/api/posts": {
+        get: {
+          tags: ["Posts"],
+          summary: "List all posts",
+          parameters: [
+            { name: "category", in: "query", schema: { type: "string" } },
+            { name: "authorId", in: "query", schema: { type: "string" } }
+          ],
+          responses: {
+            200: {
+              description: "A list of posts.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/PostListResponse" } } }
+            },
+            401: { $ref: "#/components/responses/Unauthorized" }
+          }
+        },
+        post: {
+          tags: ["Posts"],
+          summary: "Create a new post",
+          security: [{ bearerAuth: [] }, { tokenHeader: [] }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PostRequest" } } }
+          },
+          responses: {
+            201: {
+              description: "Post created.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/PostResponse" } } }
+            },
+            401: { $ref: "#/components/responses/Unauthorized" },
+            403: { $ref: "#/components/responses/Forbidden" }
+          }
+        }
+      },
+      "/api/posts/{id}": {
+        get: {
+          tags: ["Posts"],
+          summary: "Get a post by ID",
+          parameters: [{ $ref: "#/components/parameters/postId" }],
+          responses: {
+            200: {
+              description: "Post details.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/PostResponse" } } }
+            },
+            404: { $ref: "#/components/responses/NotFound" }
+          }
+        },
+        patch: {
+          tags: ["Posts"],
+          summary: "Update an existing post",
+          security: [{ bearerAuth: [] }, { tokenHeader: [] }],
+          parameters: [{ $ref: "#/components/parameters/postId" }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PostRequest" } } }
+          },
+          responses: {
+            200: {
+              description: "Post updated.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/PostResponse" } } }
+            },
+            403: { $ref: "#/components/responses/Forbidden" },
+            404: { $ref: "#/components/responses/NotFound" }
+          }
+        },
+        delete: {
+          tags: ["Posts"],
+          summary: "Delete a post",
+          security: [{ bearerAuth: [] }, { tokenHeader: [] }],
+          parameters: [{ $ref: "#/components/parameters/postId" }],
+          responses: {
+            204: { description: "Post deleted." },
+            403: { $ref: "#/components/responses/Forbidden" },
+            404: { $ref: "#/components/responses/NotFound" }
+          }
+        }
+      },
+      "/api/audit": {
+        get: {
+          tags: ["Audit"],
+          summary: "Get system audit logs",
+          security: [{ bearerAuth: [] }, { tokenHeader: [] }],
+          parameters: [
+            { name: "userId", in: "query", schema: { type: "string" } },
+            { name: "action", in: "query", schema: { type: "string" } },
+            { name: "entityType", in: "query", schema: { type: "string" } }
+          ],
+          responses: {
+            200: {
+              description: "Audit logs list.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/AuditLogListResponse" } } }
             },
             401: { $ref: "#/components/responses/Unauthorized" },
             403: { $ref: "#/components/responses/Forbidden" }

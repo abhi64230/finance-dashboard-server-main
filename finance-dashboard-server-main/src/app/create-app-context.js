@@ -21,9 +21,14 @@ export async function createAppContext(options = {}) {
   const ownsPool = !options.pool;
 
   if (options.initializeDatabase !== false) {
-    await initializeDatabase(pool, {
-      seed: options.seedDatabase !== false
-    });
+    try {
+      await initializeDatabase(pool, {
+        seed: options.seedDatabase !== false
+      });
+    } catch (error) {
+      console.error("Failed to initialize database:", error.message);
+      console.warn("Server will continue starting, but database endpoints will fail.");
+    }
   }
 
   const models = {

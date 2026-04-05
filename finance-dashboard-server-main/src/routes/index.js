@@ -63,27 +63,6 @@ export async function handleRequest(request, response, context) {
     const url = parseUrl(request);
     const segments = getPathSegments(url);
 
-    if (segments.length === 1 && segments[0] === "health") {
-      sendJson(response, 200, {
-        status: "ok",
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-
-    if (request.method === "GET" && segments.length === 1 && segments[0] === "swagger.json") {
-      sendJson(response, 200, createOpenApiSpec());
-      return;
-    }
-
-    if (request.method === "GET" && segments.length === 1 && segments[0] === "docs") {
-      response.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8"
-      });
-      response.end(getSwaggerHtml());
-      return;
-    }
-
     const user = await authenticate(request, context);
 
     if (segments[0] !== "api") {
